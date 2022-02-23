@@ -78,5 +78,10 @@ dDaCmdLength	equ	1
 daCmdLength:
 	defb	0
 dDaDisplacement	equ	2
+dDaValue16	equ	2
 daDisplacement:
+daValue16:
+	defb	0
+dDaValue8	equ	3
+daValue8:
 	defb	0

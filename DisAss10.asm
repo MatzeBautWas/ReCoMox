@@ -48,12 +48,12 @@ mnemSUB:	defb	"SU",'B'+&80
 mnemSBC:	defb	"SB",'C'+&80
 mnemAND:	defb	"AN",'D'+&80
 mnemXOR:	defb	"XO",'R'+&80
-mnemOR:		defb	'O','R'+&80, AsciiNul
-mnemCP:		defb	'C','P'+&80, AsciiNul
-mnemRET:	defb	"RE",'T'+&80, AsciiNul
-mnemJP:		defb	'J','P'+&80, AsciiNul, AsciiNul
+mnemOR:		defb	"OR",' '+&80
+mnemCP:		defb	"CP",' '+&80
+mnemRET:	defb	"RET",' '+&80
+mnemJP:		defb	"JP ",' '+&80
 mnemCALL:	defb	"CAL",'L'+&80
-mnemPOP:	defb	"PO",'P'+&80
+mnemPOP:	defb	"POP",' '+&80
 mnemPUSH:	defb	"PUS",'H'+&80
 mnemRST:	defb	"RS",'T'+&80
 mnemOUT:	defb	"OU",'T'+&80
@@ -63,8 +63,8 @@ mnemDI:		defb	'D','I'+&80
 mnemEI:		defb	'E','I'+&80
 mnemRLC:	defb	"RL",'C'+&80
 mnemRRC:	defb	"RR",'C'+&80
-mnemRL:		defb	'R','L'+&80, AsciiNul
-mnemRR:		defb	'R','R'+&80, AsciiNul
+mnemRL:		defb	"RL",' '+&80
+mnemRR:		defb	"RR",' '+&80
 mnemSLA:	defb	"SL",'A'+&80
 mnemSRA:	defb	"SR",'A'+&80
 mnemSLL:	defb	"SL",'L'+&80
@@ -199,13 +199,14 @@ daNoIX:
 	set	DA_PF_IY,(iy+dDaPrefix)		;DA_PF_IY
 	jr	daLoop
 daNoIY:
-	cp	a,&eb
-	jr	nz,daNoEB
+	cp	a,&ed
+	jr	nz,daNoED
 	ld	a,(iy+dDaPrefix)
 	and	a,DA_PF_IXbm+DA_PF_IYbm		;already any IX or IY prefix detected?
-	set	DA_PF_ED,(iy+dDaPrefix)		;DA_PF_ED
 	jr	nz,daSkipIXY			;if yes, treat as NOP	
-daNoEB:
+	set	DA_PF_ED,(iy+dDaPrefix)		;DA_PF_ED
+	jr	daNoCB
+daNoED:
 	cp	a,&cb
 	jr	nz,daNoCB
 	set	DA_PF_CB,(iy+dDaPrefix)		;DA_PF_CB
@@ -216,6 +217,8 @@ daNoCB:
 	ld	(de),a
 	exx	
 	ld	b,(iy+dDaCmdLength)
+	ld	l,(iy+dDaDisplacement)
+	ld	h,(iy+dDaValue8)
 	ret
 
 daSkipIXY:
@@ -223,9 +226,10 @@ daSkipIXY:
 	dec	(iy+dDaCmdLength)
 	xor	a
 	ld	c,a
-	jr	daNoEB
+	jr	daNoCB
 
 daDecode:
+	ld	a,c
 	cp	&cb
 	jr	z,daDecodeCB
 
@@ -330,16 +334,7 @@ daDecodeE:
 	ld	h,a					;so HL = sign extended A
 	add	hl,de
 	ld	a,h
-
-	exx
-	ex	de,hl
-	call	hex2Buffer8				;input -> A=value, HL=pointer to write to
-	exx		
-	ld	a,l
-	exx
-	call	hex2Buffer8				;input -> A=value, HL=pointer to write to
-	ex	de,hl
-	exx						;e
+	call	daInsertValue16
 	ret
 no00:
 	cp	&01
@@ -387,18 +382,7 @@ daNoLD_SP_nn:
 	call	daInsertReg16				;ss
 	ld	a,','
 	call	daChar2PrtBuffer			;,
-	call	daGetCmdByte
-	ld	l,a
-	call	daGetCmdByte
-	exx
-	ex	de,hl
-	call	hex2Buffer8				;input -> A=value, HL=pointer to write to
-	exx		
-	ld	a,l
-	exx
-	call	hex2Buffer8				;input -> A=value, HL=pointer to write to
-	ex	de,hl
-	exx						;nn
+	call	daInsertNn				;nn
 	ret
 
 noLD_ADD_ss:
@@ -455,18 +439,7 @@ daDecodepNn:
 daPostHL_A:	
 	ld	a,'('
 	call	daChar2PrtBuffer			;(
-	call	daGetCmdByte
-	ld	l,a
-	call	daGetCmdByte
-	exx
-	ex	de,hl
-	call	hex2Buffer8				;input -> A=value, HL=pointer to write to
-	exx		
-	ld	a,l
-	exx
-	call	hex2Buffer8				;input -> A=value, HL=pointer to write to
-	ex	de,hl
-	exx						;nn
+	call	daInsertNn				;nn
 	ld	a,')'
 	call	daChar2PrtBuffer			;)
 	bit	3,c
@@ -541,7 +514,7 @@ noDEC_r:
 
 ;	06=LD_B_n,   0e=LD_C_n,    16=LD_D_n,   1e=LD_E_n,    26=LD_H_n,    2e=LD_L_n,    36=LD_pHL,n, 3e=LD_A_n
 	ld	a,dLD
-	call	daInsertMnem
+	call	daInsertMnem		;LD
 	ld	a,3
 	call	daInsertBlank
 	ld	a,c
@@ -550,16 +523,11 @@ noDEC_r:
 	rra
 	and	%00000111
 	cp	%00000110
-	call	z,daInsertPHL
-	call	nz,daInsertReg8
-	ld	a,','
+	call	z,daInsertPHL		;(HL)
+	call	nz,daInsertReg8		;B, C, D, E, H, L, A
+	ld	a,','			;,
 	call	daChar2PrtBuffer
-	call	daGetCmdByte
-	exx
-	ex	de,hl
-	call	hex2Buffer8				;input -> A=value, HL=pointer to write to
-	ex	de,hl
-	exx		
+	call	daInsertN		;n
 	ret
 
 ;	07=RLCA,     0f=RRCA,      17=RLA,      1f=RAA,       27=DAA,       2f=CPL,       37=SCF,      3f=CCF
@@ -661,11 +629,7 @@ daDecode0011:
 	jr	nz,daDecode11001x01	;       RET, CALL_nn
 
 	ld	a,dJP			;JP_nn		= %11000011
-	call	daInsertMnem		;JP
-	ld	a,1
-	call	daInsertBlank
-	call	daInsertNn
-	ret
+	jr	FinishJp
 daDecode11001x01:
 	bit	2,c			;RET, CALL_nn
 	jr	nz,daDecodeCall_nn	;     CALL_nn
@@ -675,6 +639,7 @@ daDecode11001x01:
 	ret
 daDecodeCall_nn:
 	ld	a,dCALL			;CALL_nn	= %11001101
+FinishJp:
 	call	daInsertMnem		;CALL
 	ld	a,1
 	call	daInsertBlank
@@ -798,7 +763,7 @@ daDecodePopPush:
 	ld	a,dPUSH
 daDecodePop:
 	call	daInsertMnem
-	ld	a,2
+	ld	a,1
 	call	daInsertBlank
 	ld	a,c
 	rra
@@ -816,11 +781,7 @@ daDecodeRst:
 	call	daInsertBlank
 	ld	a,c
 	and	a,%00111000
-	exx
-	ex	de,hl
-	call	hex2Buffer8
-	ex	de,hl
-	exx
+	call	daInsertValue8
 	ret
 
 daDecodeRetJpCall:
@@ -1083,7 +1044,7 @@ daDecodeImLd:
 	jr	nz,daDecodeLdRrd
 	ld	a,dIM
 	call	daInsertMnem			;IM
-	ld	a,2
+	ld	a,3
 	call	daInsertBlank
 	ld	a,c
 	rra
@@ -1336,26 +1297,29 @@ daInsertPHL:
 
 daInsertN:
 	call	daGetCmdByte				;get n
-	exx
-	ex	de,hl
-	call	hex2Buffer8				;input -> A=value, HL=pointer to write to
-	ex	de,hl
-	exx		
+daInsertValue8:
+;	exx
+;	ex	de,hl
+;	call	hex2Buffer8				;input -> A=value, HL=pointer to write to
+;	ex	de,hl
+;	exx		
+	ld	(iy+dDaValue8),a	
+	ld	a,'%'
+	call	daChar2PrtBuffer			;input -> A=value, DE'=pointer to write to
 	ret
 
 daInsertNn:
 	call	daGetCmdByte				;get low Byte nn
 	ld	l,a
 	call	daGetCmdByte				;get high Byte nn
-	exx
-	ex	de,hl
-	call	hex2Buffer8				;input -> A=value, HL=pointer to write to
-	exx
-	ld	a,l
-	exx
-	call	hex2Buffer8				;input -> A=value, HL=pointer to write to
-	ex	de,hl
-	exx			
+daInsertValue16:
+;	call	daInsertValue8
+;	ld	a,l
+;	call	daInsertValue8
+	ld	(iy+dDaValue16),l
+	ld	(iy+dDaValue16+1),a
+	ld	a,'#'
+	call	daChar2PrtBuffer			;input -> A=value, DE'=pointer to write to
 	ret
 
 daInsertPIXY:
@@ -1365,9 +1329,7 @@ daInsertPIXY:
 	ld	a,(iy+dDaCmdLength)
 	cp	2
 	jr	nz,daNotThird
-	ld	a,(de)
-	inc	de
-	inc	(iy+dDaCmdLength)
+	call	daGetCmdByte
 	ld	(iy+dDaDisplacement),a
 daNotThird:
 	ld	a,(iy+dDaPrefix)
@@ -1384,15 +1346,14 @@ daSelIX:
 	ld	a,c
 	neg
 	ld	c,a
+	ld	(iy+dDaDisplacement),a
 	ld	a,'-'
 daDisPos:
 	call	daChar2PrtBuffer			;input -> A=value, DE'=pointer to write to
-	ld	a,c
-	exx
-	ex	de,hl
-	call	hex2Buffer8				;input -> A=value, HL=pointer to write to
-	ex	de,hl
-	exx
+;	ld	a,c
+;	call	daInsertValue8
+	ld	a,'$'
+	call	daChar2PrtBuffer			;input -> A=value, DE'=pointer to write to
 	res	2,(iy+dDaPrefix)
 	res	3,(iy+dDaPrefix)
 	pop	bc

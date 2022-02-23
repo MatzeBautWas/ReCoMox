@@ -538,16 +538,6 @@ cmdDisAssLoop:
 	push	de
 	ld	hl,prtBuffer
 	call	disAssemble		;Disassemble at DE, returns end of disassembly string in DE'
-;	ld	a,AsciiLF
-;	call	daChar2PrtBuffer
-;	ld	a,AsciiCR
-;	call	daChar2PrtBuffer
-;	ld	a,AsciiNUL
-;	call	daChar2PrtBuffer
-	
-;	ld	hl,prtBuffer
-;	call	uartSendString
-;	call	uartWaitTxBufferEmpty
 	pop	de
 
 	ld	a,d
@@ -582,7 +572,34 @@ cdStringLoop:
 	ld	a,(hl)
 	or	a
 	jr	z,cdQuitStringLoop
+	cp	a,'#'
+	jr	nz,cdNoNn
+	ld	a,'&'
 	call	uartSendChar
+	ld	a,(iy+dDaValue16+1)
+	call	uartSendHex
+	ld	a,(iy+dDaValue16)
+	call	uartSendHex
+	jr	cdSpecialChar
+cdNoNn:
+	cp	a,'%'
+	jr	nz,cdNoN
+	ld	a,'&'
+	call	uartSendChar
+	ld	a,(iy+dDaValue8)
+	call	uartSendHex
+	jr	cdSpecialChar
+cdNoN:
+	cp	a,'$'
+	jr	nz,cdNormalChar
+	ld	a,'&'
+	call	uartSendChar
+	ld	a,(iy+dDaDisplacement)
+	call	uartSendHex
+	jr	cdSpecialChar
+cdNormalChar:
+	call	uartSendChar
+cdSpecialChar:
 	inc	hl
 	jr	cdStringLoop
 cdQuitStringLoop:
@@ -595,7 +612,7 @@ cdQuitStringLoop:
 	dec	bc
 	ld	a,c
 	or	b
-	jr	nz,cmdDisAssLoop
+	jp	nz,cmdDisAssLoop
 
 	ret
 descriptDisass:

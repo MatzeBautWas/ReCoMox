@@ -25,7 +25,7 @@ intChecksum:
 	defw	-intEntry
 
 version:
-	defb	"ReCoMox Monitor V1.0 21.02.2022", AsciiLF, AsciiCR, 0
+	defb	"ReCoMox Monitor V1.0 23.02.2022", AsciiLF, AsciiCR, 0
 
 read "IfInOut10.asm"
 read "Interrupt10.asm"
